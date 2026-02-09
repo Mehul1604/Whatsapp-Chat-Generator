@@ -1,51 +1,72 @@
-# WhatsApp Chatbot (LSTM)
+# WhatsApp Chatbot (Fastai AWD‑LSTM)
 
-LSTM-based chatbot trained on personal WhatsApp group chats. The notebook preprocesses conversation history to learn unique texting styles, slang, and informal patterns. It aims for realistic, personalized responses while optimizing for low-resource local training — no expensive cloud compute or large transformer models required.
+Trains a lightweight Fastai language model (AWD‑LSTM) on a personal WhatsApp chat export (`chat.txt`) to generate chat-style text.
 
-**What it does**
-- **Preprocesses:** Cleans WhatsApp exports (timestamps, names, media, URLs, emojis) and filters repeated lines.
-- **Tokenizes:** Builds a tokenizer and converts chat lines into n-gram sequences for next-word prediction.
-- **Trains:** Trains an LSTM-based language model on the processed text to generate chat-style responses.
-- **Local & Lightweight:** Designed to run on a local machine with modest resources for experimentation.
+This repo is notebook-first and optimized for experimentation: you can quickly iterate on preprocessing choices and see how they affect loss curves and generations.
 
-**Files**
-- Project notebook: [Whatsapp-Chat-Generator/whatsapp_generator.ipynb](Whatsapp-Chat-Generator/whatsapp_generator.ipynb)
-- Raw chat dataset: [Whatsapp-Chat-Generator/chat.txt](Whatsapp-Chat-Generator/chat.txt)
+## Files
 
-**Requirements**
+- Main notebook (Fastai AWD‑LSTM): [whatsapp_generator_lstm.ipynb](whatsapp_generator_lstm.ipynb)
+- Raw chat dataset (example): [chat.txt](chat.txt)
+
+## What the notebook does
+
+- **Parses WhatsApp exports** into a dataframe (`timestamp`, `sender`, `text`).
+- **Builds a language-model training stream** by concatenating turns and injecting a speaker control token:
+   - `xxspk <speaker_name>` (lets the LM learn multi-speaker turn-taking from plain text)
+- **Trains an AWD‑LSTM language model** with Fastai (`language_model_learner`) using next-token prediction.
+
+## Training process (Fastai)
+
+The notebook uses the standard Fastai LM fine-tuning pattern:
+
+1. **Create `TextDataLoaders`** (language modeling mode, e.g. `seq_len=128`).
+2. **Initialize the learner** with `language_model_learner(dls, AWD_LSTM, ...)`.
+3. **Two-stage training**:
+    - `learn.freeze()` then `fit_one_cycle(...)` for a short warmup stage.
+    - `learn.unfreeze()` then `fit_one_cycle(...)` to fine-tune the full model.
+
+Recommended early stopping for language models is to monitor `valid_loss` (rather than token accuracy), since loss/perplexity better reflect LM generalization.
+
+## Straightforward upgrades (recommended)
+
+These are high-impact improvements for better learning and more realistic chat outputs:
+
+- **Tolerant timestamp parsing**: avoid filtering rows by a fixed timestamp string length; parse robustly and drop only rows that truly fail parsing.
+- **Preserve emojis/punctuation** (or normalize to tokens): emojis are strong tone/style signals in chat.
+- **Explicit message boundaries**: add `xxeom` after each message so the model learns message-length rhythm and turn boundaries.
+- **Time-aware split**: train on earlier messages and validate on later messages for a realistic evaluation.
+
+If you want a stronger baseline model, this repo also contains an experimental GPT‑2–style Transformer notebook: [whatsapp_generator_pytorch.ipynb](whatsapp_generator_pytorch.ipynb).
+
+## Requirements
+
 - Python 3.8+
-- pip
-- Recommended packages (install with pip):
+- Jupyter (Notebook or Lab)
+- Packages:
+   - `fastai`
+   - `pandas`
+
+Install:
 
 ```bash
-pip install tensorflow numpy jupyter
+pip install -U fastai pandas jupyter
 ```
 
-(If on macOS with Apple Silicon, consider `tensorflow-macos` and `tensorflow-metal` for better performance.)
+## How to run
 
-**How to run**
-1. Open the project folder and ensure `chat.txt` is present in the same folder as the notebook.
+1. Put your exported WhatsApp chat file at `chat.txt` in the project folder.
 2. Start Jupyter:
 
 ```bash
-jupyter notebook
-# or
 jupyter lab
+# or
+jupyter notebook
 ```
 
-3. Open [Whatsapp-Chat-Generator/whatsapp_generator.ipynb](Whatsapp-Chat-Generator/whatsapp_generator.ipynb) and run cells in order.
-   - Preprocessing cells produce `cleaned_lines` and prepare `data`.
-   - Tokenization and sequence creation cells produce `X` and `y`.
-   - The model is defined and trained in the later cells (`model.fit(...)`).
-4. Adjust hyperparameters as needed (e.g., `epochs`, `batch_size`, LSTM units) before training.
+3. Open [whatsapp_generator_lstm.ipynb](whatsapp_generator_lstm.ipynb) and run cells in order.
 
-**Saving a trained model (optional)**
-To persist the trained model after training, add a cell after training with:
+## Notes & privacy
 
-```python
-model.save('lstm_whatsapp_bot.h5')
-```
-
-**Notes & privacy**
-- This project is intended for personal use and local training on private chat data. Do not share sensitive conversations.
-- The model learns and reproduces informal language and slang present in the dataset. Use responsibly.
+- Keep your chat logs private; they can contain sensitive data.
+- Generative models can memorize and reproduce training text. Treat outputs as potentially sensitive.
