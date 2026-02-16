@@ -36,3 +36,9 @@ urllib3
 Werkzeug
 wheel
 wrapt
+
+# Added for the refactored Transformer pipeline + UI
+pandas
+torch
+transformers
+streamlit
